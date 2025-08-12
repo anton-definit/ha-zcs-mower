@@ -160,6 +160,20 @@
         }
       }
     },
+    "update_position": {
+      "name": "Position aktualisieren",
+      "description": "Aktualisiert die Position des Rasenmähers.",
+      "fields": {
+        "device_id": {
+          "name": "Gerät(e)",
+          "description": "Gerät(e), auf dem/denen der Befehl ausgeführt werden soll."
+        },
+        "delay": {
+          "name": "Verzögerung",
+          "description": "Verzögerung in Sekunden zwischen trace_position und thing.find."
+        }
+      }
+    },
     "wake_up": {
       "name": "Aufwachen",
       "description": "Befiehlt dem Rasenmäher, aufzuwachen und sich mit der Cloud zu verbinden.",
@@ -382,6 +396,14 @@
     "button": {
       "update_now": {
         "name": "Aktualisiere jetzt",
+        "state_attributes": {
+          "imei": {
+            "name": "IMEI"
+          }
+        }
+      },
+      "update_position": {
+        "name": "Position aktualisieren",
         "state_attributes": {
           "imei": {
             "name": "IMEI"

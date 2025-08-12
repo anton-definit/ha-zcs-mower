@@ -614,6 +614,46 @@ class ZcsMowerDataUpdateCoordinator(DataUpdateCoordinator):
 
         self.data[imei] = mower
 
+    async def async_update_position(
+        self, 
+        imei: str, 
+        delay: int = 3
+    ) -> None:
+        LOGGER.debug("update_position: %s", imei)
+        # 1) Best-effort trace; still proceed if it fails
+        try:
+            await self.async_trace_position(imei)
+        except Exception:
+            pass
+
+        # 2) Short delay
+        if delay and delay > 0:
+            await asyncio.sleep(delay)
+
+        # 3) Direct find
+        await self.client.execute("thing.find", {"imei": imei})
+        response = await self.client.get_response()
+
+        # 4) Update location + history (no async_update_mower)
+        mower = self.get_mower_attributes(imei)
+        if mower is not None:
+            robot_state = (response.get("alarms") or {}).get("robot_state") or {}
+            if "lat" in robot_state and "lng" in robot_state:
+                latitude = float(robot_state["lat"])
+                longitude = float(robot_state["lng"])
+                mower[ATTR_LOCATION] = {
+                    ATTR_LATITUDE: latitude,
+                    ATTR_LONGITUDE: longitude,
+                }
+                self.add_location_history(
+                    imei=imei,
+                    location=(latitude, longitude),
+                )
+                self.data[imei] = mower
+
+    # 5) Notify listeners after updating location/history
+    self.hass.async_create_task(self._async_update_listeners())
+
     async def async_prepare_for_command(
         self,
         imei: str,

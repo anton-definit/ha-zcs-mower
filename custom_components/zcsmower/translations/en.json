@@ -160,6 +160,20 @@
         }
       }
     },
+    "update_position": {
+      "name": "Updating position",
+      "description": "Fetch data for lawn mower from API now.",
+      "fields": {
+        "device_id": {
+          "name": "Device(s)",
+          "description": "Device(s) on which the command is to be executed."
+        },
+        "delay": {
+          "name": "Delay",
+          "description": "Delay in seconds between trace_position and thing.find command."
+        }
+      }
+    },
     "wake_up": {
       "name": "Wake up",
       "description": "Command the lawn mower to wake up and connect to the cloud.",
@@ -385,6 +399,14 @@
     "button": {
       "update_now": {
         "name": "Update now",
+        "state_attributes": {
+          "imei": {
+            "name": "IMEI"
+          }
+        }
+      },
+      "update_position": {
+        "name": "Update position",
         "state_attributes": {
           "imei": {
             "name": "IMEI"

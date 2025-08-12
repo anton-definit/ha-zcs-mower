@@ -160,6 +160,20 @@
         }
       }
     },
+    "update_position": {
+      "name": "Updating position",
+      "description": "Fetch the current position of the lawn mower from API now.",
+      "fields": {
+        "device_id": {
+          "name": "Device(s)",
+          "description": "Device(s) on which the command is to be executed."
+        },
+        "delay": {
+          "name": "Delay",
+          "description": "Delay in seconds before thing.find is called. Default is 3 seconds."
+        }
+      }
+    },
     "wake_up": {
       "name": "Wake up",
       "description": "Command the lawn mower to wake up and connect to the cloud.",
@@ -391,8 +405,16 @@
           }
         }
       },
+      "update_position": {
+        "name": "Update position",
+        "state_attributes": {
+          "imei": {
+            "name": "IMEI"
+          }
+        }
+      },
       "wake_up": {
-        "name": "Update now",
+        "name": "Wake up",
         "state_attributes": {
           "imei": {
             "name": "IMEI"

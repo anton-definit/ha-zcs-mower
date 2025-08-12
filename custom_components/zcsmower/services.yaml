@@ -10,6 +10,29 @@ update_now:
           entity:
             domain: "device_tracker"
 
+update_position:
+  fields:
+    device_id:
+      required: true
+      selector:
+        device:
+          multiple: true
+          filter:
+            integration: "zcsmower"
+          entity:
+            domain: "device_tracker"
+    delay:
+      required: false
+      example: 3
+      default: 3
+      selector:
+        number:
+          min: 1
+          max: 20
+          step: 1
+          mode: slider
+          unit_of_measurement: seconds
+
 wake_up:
   fields:
     device_id:

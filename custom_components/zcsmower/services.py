@@ -21,6 +21,8 @@ from .const import (
     DOMAIN,
     SERVICE_UPDATE_NOW,
     SERVICE_UPDATE_NOW_SCHEMA,
+    SERVICE_UPDATE_POSITION,
+    SERVICE_UPDATE_POSITION_SCHEMA,
     SERVICE_WAKE_UP,
     SERVICE_WAKE_UP_SCHEMA,
     SERVICE_SET_PROFILE,
@@ -80,6 +82,8 @@ async def async_setup_services(hass: HomeAssistant) -> None:
 
         if service == SERVICE_UPDATE_NOW:
             await _async_update_now(hass, targets, data)
+        elif service == SERVICE_UPDATE_POSITION:
+            await _async_update_position(hass, targets, data)
         elif service == SERVICE_WAKE_UP:
             await _async_wake_up(hass, targets, data)
         elif service == SERVICE_SET_PROFILE:
@@ -110,6 +114,12 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         service=SERVICE_UPDATE_NOW,
         service_func=async_handle_service,
         schema=SERVICE_UPDATE_NOW_SCHEMA
+    )
+    hass.services.async_register(
+        domain=DOMAIN,
+        service=SERVICE_UPDATE_POSITION,
+        service_func=async_handle_service,
+        schema=SERVICE_UPDATE_POSITION_SCHEMA
     )
     hass.services.async_register(
         domain=DOMAIN,
@@ -188,6 +198,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
 def async_unload_services(hass: HomeAssistant) -> None:
     """Unload ZCS Lawn Mower Robot services."""
     hass.services.async_remove(DOMAIN, SERVICE_UPDATE_NOW)
+    hass.services.async_remove(DOMAIN, SERVICE_UPDATE_POSITION)
     hass.services.async_remove(DOMAIN, SERVICE_WAKE_UP)
     hass.services.async_remove(DOMAIN, SERVICE_SET_PROFILE)
     hass.services.async_remove(DOMAIN, SERVICE_WORK_NOW)
@@ -212,6 +223,20 @@ async def _async_update_now(
         hass.async_create_task(
             coordinator.async_update_now(
                 imei,
+            )
+        )
+
+async def _async_update_position(
+    hass: HomeAssistant,
+    targets: dict[str, any],
+    data: dict[str, any],
+) -> None:
+    """Handle the service call."""
+    for imei, coordinator in targets.items():
+        hass.async_create_task(
+            coordinator.async_update_position(
+                imei,
+                data.get("delay"),
             )
         )
 

@@ -51,6 +51,9 @@
     "update_now": {
       "service": "mdi:update"
     },
+    "update_position": {
+      "service": "mdi:update"
+    },
     "wake_up": {
       "service": "mdi:connection"
     },

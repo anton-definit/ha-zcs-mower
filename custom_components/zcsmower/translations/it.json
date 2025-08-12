@@ -160,6 +160,20 @@
         }
       }
     },
+    "update_position": {
+      "name": "Aggiornamento della posizione",
+      "description": "Recuperare ora i dati per il tosaerba dall'API.",
+      "fields": {
+        "device_id": {
+          "name": "Dispositivo/i",
+          "description": "Dispositivo/i su cui deve essere eseguito il comando."
+        },
+        "delay": {
+          "name": "Ritardo",
+          "description": "Ritardo in secondi tra trace_position e thing.find command."
+        }
+      }
+    },
     "wake_up": {
       "name": "Svegliarsi",
       "description": "Comandate al tosaerba di svegliarsi e di connettersi al cloud.",
@@ -382,6 +396,14 @@
     "button": {
       "update_now": {
         "name": "Aggiorna ora",
+        "state_attributes": {
+          "imei": {
+            "name": "IMEI"
+          }
+        }
+      },
+      "update_position": {
+        "name": "Aggiorna posizione",
         "state_attributes": {
           "imei": {
             "name": "IMEI"

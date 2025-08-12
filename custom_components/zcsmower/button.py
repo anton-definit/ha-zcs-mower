@@ -25,6 +25,13 @@ ROBOT_ENTITY_DESCRIPTIONS = (
         entity_category=EntityCategory.CONFIG,
     ),
     ButtonEntityDescription(
+        key="update_position",
+        icon="mdi:update",
+        translation_key="update_position",
+        device_class=ButtonDeviceClass.UPDATE,
+        entity_category=EntityCategory.CONFIG,
+    ),
+    ButtonEntityDescription(
         key="wake_up",
         icon="mdi:connection",
         translation_key="wake_up",

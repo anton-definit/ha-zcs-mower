@@ -78,6 +78,13 @@ SERVICE_UPDATE_NOW_SCHEMA = vol.Schema(
         vol.Required(CONF_DEVICE_ID): cv.entity_ids_or_uuids,
     }
 )
+SERVICE_UPDATE_POSITION = "update_position"
+SERVICE_UPDATE_POSITION_SCHEMA = vol.Schema(
+    {
+        vol.Required(CONF_DEVICE_ID): cv.entity_ids_or_uuids,
+        vol.Optional("delay"): vol.All(vol.Coerce(int), vol.Range(min=1, max=20)),
+    }
+)
 SERVICE_WAKE_UP = "wake_up"
 SERVICE_WAKE_UP_SCHEMA = vol.Schema(
     {
