@@ -9,10 +9,10 @@
   ],
   "config_flow": true,
   "dependencies": [],
-  "documentation": "https://github.com/ufozone/ha-zcs-mower",
+  "documentation": "https://github.com/anton-definit/ha-zcs-mower",
   "integration_type": "hub",
   "iot_class": "cloud_polling",
-  "issue_tracker": "https://github.com/ufozone/ha-zcs-mower/issues",
+  "issue_tracker": "https://github.com/anton-definit/ha-zcs-mower/issues",
   "loggers": [
     "geopy",
     "numpy",

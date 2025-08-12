@@ -363,6 +363,10 @@ The following settings are available:
 
     Fetch data for lawn mower immediately from API.
 
+* `zcsmower.update_position`:
+
+    Fetch position for lawn mower immediately from API.
+
 * `zcsmower.wake_up`:
 
     Command the lawn mower to wake up and connect to the cloud.
