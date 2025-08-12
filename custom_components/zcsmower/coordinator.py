@@ -651,8 +651,8 @@ class ZcsMowerDataUpdateCoordinator(DataUpdateCoordinator):
                 )
                 self.data[imei] = mower
 
-    # 5) Notify listeners after updating location/history
-    self.hass.async_create_task(self._async_update_listeners())
+        # 5) Notify listeners after updating location/history
+        self.hass.async_create_task(self._async_update_listeners())
 
     async def async_prepare_for_command(
         self,
