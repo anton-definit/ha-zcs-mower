@@ -710,7 +710,7 @@ class ZcsMowerDataUpdateCoordinator(DataUpdateCoordinator):
             LOGGER.debug("update_position: STEP 6: notifying listeners")
             self.hass.async_create_task(self._async_update_listeners())
         finally:
-            self._async_update_lock.release()
+            self._lock_update_position.release()
             LOGGER.debug("update_position: DONE! LOCK RELEASED")
 
     async def async_prepare_for_command(
