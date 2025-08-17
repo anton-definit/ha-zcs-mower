@@ -99,7 +99,6 @@ from .const import (
 # https://developers.home-assistant.io/docs/integration_fetching_data#coordinated-single-api-poll-for-data-for-all-entities
 class ZcsMowerDataUpdateCoordinator(DataUpdateCoordinator):
     """Class to manage fetching data from the ZCS API."""
-
     def __init__(
         self,
         hass: HomeAssistant,
@@ -133,6 +132,8 @@ class ZcsMowerDataUpdateCoordinator(DataUpdateCoordinator):
                     )
                 ),
             )
+
+        self._lock_update_position = asyncio.Lock()
         self.config_entry = config_entry
         self.client = ZcsMowerApiClient(
             session=async_get_clientsession(hass),
@@ -614,88 +615,103 @@ class ZcsMowerDataUpdateCoordinator(DataUpdateCoordinator):
 
         self.data[imei] = mower
 
+    async def async_thing_find(
+        self, 
+        imei: str
+    ) -> any:
+        """Send a thing.find command."""
+        await self.client.execute("thing.find", {"imei": imei})
+        return await self.client.get_response()
+
     async def async_update_position(
         self, 
         imei: str, 
         delay: int
     ) -> None:
-        """thing.find → (if offline: wake_up + 5s) → trace_position → wait → thing.find → update → notify."""
-        LOGGER.debug("update_position: start imei=%s", imei)
-        
-        # Normalize delay (accept None or string, clamp to >= 0)
+        """Update the position of the mower."""
+
+        if not hasattr(self, "_lock_update_position"):
+            self._lock_update_position = asyncio.Lock()
+
         try:
-            delay = 3 if delay is None else max(0, int(delay))
-        except (TypeError, ValueError):
-            delay = 3
-
-        # 0) Initial find: see if we're connected
-        connected = False
-        try:
-            LOGGER.debug("update_position: initial thing.find …")
-            await self.client.execute("thing.find", {"imei": imei})
-            resp0 = await self.client.get_response()
-            connected = bool(resp0.get("connected", False))
-            LOGGER.debug("update_position: initial find connected=%s", connected)
-        except Exception as err:
-            LOGGER.debug("update_position: initial thing.find failed: %s", err)
-
-        # 1) If offline, try to wake it
-        if not connected:
-            try:
-                LOGGER.debug("update_position: offline → wake_up …")
-                await self.async_wake_up(imei)
-                LOGGER.debug("update_position: wake_up sent, sleeping 5s …")
-            except Exception as err:
-                LOGGER.debug("update_position: wake_up failed: %s", err)
-            await asyncio.sleep(5)
-
-        # 2) Always try a trace_position (best-effort)
-        try:
-            LOGGER.debug("update_position: trace_position …")
-            await self.client.execute(
-                "method.exec",
-                {"method": "trace_position", "imei": imei, "ackTimeout": 30, "singleton": True},
-            )
-            await self.client.get_response()
-            LOGGER.debug("update_position: trace_position done")
-        except Exception as err:
-            LOGGER.debug("update_position: trace_position error: %s", err)
-
-        # 3) Wait a bit before the final find
-        LOGGER.debug("update_position: sleeping %ss before final find …", delay)
-        await asyncio.sleep(delay)
-
-        # 4) Final find
-        try:
-            LOGGER.debug("update_position: final thing.find …")
-            await self.client.execute("thing.find", {"imei": imei})
-            response = await self.client.get_response()
-            LOGGER.debug("update_position: final find connected=%s", response.get("connected"))
-        except Exception as err:
-            LOGGER.debug("update_position: final thing.find failed: %s", err)
+            await asyncio.wait_for(self._lock_update_position.acquire(), timeout=0)
+        except asyncio.TimeoutError:
+            LOGGER.debug("update_position: LOCKED! Skipping execution")
             return
 
-        # 5) Update location + history from robot_state
-        mower = self.get_mower_attributes(imei)
-        if mower is not None:
-            rs = (response.get("alarms") or {}).get("robot_state") or {}
-            lat = rs.get("lat"); lng = rs.get("lng")
-            LOGGER.debug("update_position: robot_state lat=%s lng=%s", lat, lng)
-            if lat is not None and lng is not None:
-                try:
-                    latitude = float(lat); longitude = float(lng)
-                except (TypeError, ValueError):
-                    LOGGER.debug("update_position: invalid lat/lng in response")
-                else:
-                    mower[ATTR_LOCATION] = {ATTR_LATITUDE: latitude, ATTR_LONGITUDE: longitude}
-                    self.add_location_history(imei=imei, location=(latitude, longitude))
-                    self.data[imei] = mower
-                    LOGGER.debug("update_position: location updated + history appended")
+        try:
+            # Normalize delay (accept None or string, clamp to >= 0)
+            try:
+                delay = 5 if delay is None else max(0, int(delay))
+            except (TypeError, ValueError):
+                delay = 5
 
-        # 6) Notify listeners
-        LOGGER.debug("update_position: notifying listeners …")
-        self.hass.async_create_task(self._async_update_listeners())
-        LOGGER.debug("update_position: done")
+            # 0) Check if we're connected
+            connected = False
+            try:
+                LOGGER.debug("update_position: STEP 0: thing.find")
+                find_resp_1 = await self.async_thing_find(imei)
+                connected = bool(find_resp_1.get("connected", False))
+            except Exception as err:
+                LOGGER.debug("update_position: STEP 0: failed: %s", err)
+
+            # 1) If not connected, try to wake up
+            if not connected:
+                try:
+                    LOGGER.debug("update_position: STEP 1: connected = %s, wake_up", connected)
+                    await self.async_wake_up(imei)
+                except Exception as err:
+                    LOGGER.debug("update_position: STEP 1: failed: %s", err)
+                await asyncio.sleep(5)
+                LOGGER.debug("update_position: STEP 1: thing.find after wake_up")
+                await self.async_thing_find(imei)
+
+            # 2) Trace position
+            try:
+                LOGGER.debug("update_position: STEP 2: trace_position")
+                await self.client.execute(
+                    "method.exec",
+                    {"method": "trace_position", "imei": imei, "ackTimeout": API_ACK_TIMEOUT, "singleton": True},
+                )
+                await self.client.get_response()
+            except Exception as err:
+                LOGGER.debug("update_position: STEP 2: failed: %s", err)
+
+            # 3) Wait a bit before the final find
+            LOGGER.debug("update_position: STEP 3: Delay = %ss", delay)
+            await asyncio.sleep(delay)
+
+            # 4) Final find
+            try:
+                LOGGER.debug("update_position: STEP 4: thing.find")
+                find_resp_2 = await self.async_thing_find(imei)
+            except Exception as err:
+                LOGGER.debug("update_position: STEP 4: failed: %s", err)
+                return
+
+            # 5) Update location + history from robot_state
+            LOGGER.debug("update_position: STEP 5: Update location + history")
+            mower = self.get_mower_attributes(imei)
+            if mower is not None:
+                rs = (find_resp_2.get("alarms") or {}).get("robot_state") or {}
+                lat = rs.get("lat"); lng = rs.get("lng")
+                if lat is not None and lng is not None:
+                    try:
+                        latitude = float(lat); longitude = float(lng)
+                    except (TypeError, ValueError):
+                        LOGGER.debug("update_position: STEP 5: invalid lat/lng in response")
+                    else:
+                        mower[ATTR_LOCATION] = {ATTR_LATITUDE: latitude, ATTR_LONGITUDE: longitude}
+                        self.add_location_history(imei=imei, location=(latitude, longitude))
+                        self.data[imei] = mower
+                        LOGGER.debug("update_position: STEP 5: location updated + history appended")
+
+            # 6) Notify listeners
+            LOGGER.debug("update_position: STEP 6: notifying listeners")
+            self.hass.async_create_task(self._async_update_listeners())
+        finally:
+            self._async_update_lock.release()
+            LOGGER.debug("update_position: DONE! LOCK RELEASED")
 
     async def async_prepare_for_command(
         self,
