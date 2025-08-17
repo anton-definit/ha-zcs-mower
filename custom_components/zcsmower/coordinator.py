@@ -633,13 +633,11 @@ class ZcsMowerDataUpdateCoordinator(DataUpdateCoordinator):
         if not hasattr(self, "_lock_update_position"):
             self._lock_update_position = asyncio.Lock()
 
-        try:
-            await asyncio.wait_for(self._lock_update_position.acquire(), timeout=0)
-        except asyncio.TimeoutError:
+        if self._lock_update_position.locked():
             LOGGER.debug("update_position: LOCKED! Skipping execution")
             return
 
-        try:
+        async with self._lock_update_position:
             # Normalize delay (accept None or string, clamp to >= 0)
             try:
                 delay = 5 if delay is None else max(0, int(delay))
@@ -709,9 +707,6 @@ class ZcsMowerDataUpdateCoordinator(DataUpdateCoordinator):
             # 6) Notify listeners
             LOGGER.debug("update_position: STEP 6: notifying listeners")
             self.hass.async_create_task(self._async_update_listeners())
-        finally:
-            self._lock_update_position.release()
-            LOGGER.debug("update_position: DONE! LOCK RELEASED")
 
     async def async_prepare_for_command(
         self,
