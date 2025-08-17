@@ -660,7 +660,7 @@ class ZcsMowerDataUpdateCoordinator(DataUpdateCoordinator):
                     await self.async_wake_up(imei)
                 except Exception as err:
                     LOGGER.debug("update_position: STEP 1: failed: %s", err)
-                await asyncio.sleep(5)
+                await asyncio.sleep(10)
                 LOGGER.debug("update_position: STEP 1: thing.find after wake_up")
                 await self.async_thing_find(imei)
 
