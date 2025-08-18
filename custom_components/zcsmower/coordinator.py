@@ -633,15 +633,20 @@ class ZcsMowerDataUpdateCoordinator(DataUpdateCoordinator):
         2) thing.find
         3) update location & history
         """
+
+        # Locking
+        if not hasattr(self, "_lock_update_position"):
+            self._lock_update_position = asyncio.Lock()
+
+        if self._lock_update_position.locked():
+            LOGGER.debug("update_position: LOCKED")
+            return
+
         # normalize delay
         try:
             delay = 3 if delay is None else max(0, int(delay))
         except (TypeError, ValueError):
             delay = 3
-
-        # Locking
-        if not hasattr(self, "_lock_update_position"):
-            self._lock_update_position = asyncio.Lock()
 
         async with self._lock_update_position:
 
@@ -785,8 +790,10 @@ class ZcsMowerDataUpdateCoordinator(DataUpdateCoordinator):
         self,
         imei: str,
     ) -> bool:
-        """Send command wake_up to lawn nower."""
-        LOGGER.debug("wake_up: %s", imei)
+        """Send command wake_up to lawn nower."""        
+        origin = self._infer_wakeup_origin()
+        LOGGER.debug("wake_up: %s [origin=%s]", imei, origin)
+
         try:
             self.data[imei][ATTR_LAST_WAKE_UP] = self._get_datetime_now()
             return await self.client.execute(
@@ -802,6 +809,27 @@ class ZcsMowerDataUpdateCoordinator(DataUpdateCoordinator):
         except Exception as exception:
             LOGGER.exception(exception)
         return False
+
+    def _infer_wakeup_origin(self) -> str:
+        """Best-effort caller inference without spamming logs."""
+        try:
+            import inspect
+            from pathlib import Path
+
+            for frame in inspect.stack()[1:8]:
+                fn = frame.function
+                file = Path(frame.filename)
+                # Skip internal helpers / transport layer
+                if fn in {"async_wake_up", "execute", "post", "get_response"}:
+                    continue
+                # Prefer frames from our integration package
+                if "custom_components" in str(file):
+                    return f"{fn} ({file.name}:{frame.lineno})"
+            # Fallback to first non-skipped frame
+            f = inspect.stack()[2]
+            return f"{f.function} ({Path(f.filename).name}:{f.lineno})"
+        except Exception:
+            return "unknown"
 
     async def async_set_profile(
         self,
