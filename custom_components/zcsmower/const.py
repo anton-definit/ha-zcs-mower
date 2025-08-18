@@ -190,48 +190,50 @@ API_DATETIME_FORMAT_DEFAULT = "%Y-%m-%dT%H:%M:%S.%f%z"
 API_DATETIME_FORMAT_FALLBACK = "%Y-%m-%dT%H:%M:%S%z"
 API_ACK_TIMEOUT = 30
 
+INT_MAX = 2_147_483_647
+
 CONFIGURATION_DEFAULTS = {
     CONF_UPDATE_INTERVAL_WORKING: {
         "default": 120,
-        "min": 30,
-        "max": 300,
-        "step": 30,
+        "min": 1,
+        "max": INT_MAX,
+        "step": 1,
     },
     CONF_UPDATE_INTERVAL_STANDBY: {
         "default": 300,
-        "min": 60,
-        "max": 3600,
-        "step": 60,
+        "min": 1,
+        "max": INT_MAX,
+        "step": 1,
     },
     CONF_UPDATE_INTERVAL_IDLING: {
         "default": 3600,
-        "min": 300,
-        "max": 86400,
-        "step": 300,
+        "min": 1,
+        "max": INT_MAX,
+        "step": 1,
     },
     CONF_UPDATE_INTERVAL_HIBERNATION: {
         "default": 86400,
-        "min": 3600,
-        "max": 604800,
-        "step": 3600,
+        "min": 1,
+        "max": INT_MAX,
+        "step": 1,
     },
     CONF_WAKE_UP_INTERVAL_DEFAULT: {
         "default": 1800,
-        "min": 300,
-        "max": 21600,
-        "step": 300,
+        "min": 1,
+        "max": INT_MAX,
+        "step": 1,
     },
     CONF_WAKE_UP_INTERVAL_INFINITY: {
         "default": 300,
-        "min": 300,
-        "max": 21600,
-        "step": 300,
+        "min": 1,
+        "max": INT_MAX,
+        "step": 1,
     },
     CONF_WAKE_UP_TIMEOUT: {
         "default": 120,
-        "min": 30,
-        "max": 300,
-        "step": 30,
+        "min": 1,
+        "max": INT_MAX,
+        "step": 1,
     },
 }
 
