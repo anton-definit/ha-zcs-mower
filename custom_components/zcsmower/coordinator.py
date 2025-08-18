@@ -41,6 +41,7 @@ from .api import (
     ZcsMowerApiClient,
     ZcsMowerApiAuthenticationError,
     ZcsMowerApiError,
+    ZcsMowerApiCommunicationError,
 )
 from .const import (
     LOGGER,
