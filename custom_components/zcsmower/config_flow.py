@@ -982,6 +982,10 @@ class ZcsMowerOptionsFlowHandler(OptionsFlow):
                             CONF_WAKE_UP_INTERVAL_INFINITY,
                             _get_config(CONF_WAKE_UP_INTERVAL_INFINITY, "default")
                         ),
+                        CONF_WAKE_UP_TIMEOUT: user_input.get(
+                            CONF_WAKE_UP_TIMEOUT,
+                            _get_config(CONF_WAKE_UP_TIMEOUT, "default")
+                        ),
                     }
                 )
                 # If user ticked the box for re-generating client key

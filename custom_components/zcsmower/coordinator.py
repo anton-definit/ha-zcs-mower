@@ -625,16 +625,22 @@ class ZcsMowerDataUpdateCoordinator(DataUpdateCoordinator):
         return await self.client.get_response()
 
     async def async_update_position(
-        self, 
-        imei: str, 
-        delay: int
+        self,
+        imei: str,
+        delay: int | None = None,  # delay = wake_up delay in seconds
     ) -> None:
-        """1) trace_position; on timeout/offline: wake + 10s, else wait <delay>
-        2) thing.find
-        3) update location & history
+        """
+        Strategy:
+          1) fixed delay (5s)
+          2) thing.find
+          3) if coordinate unchanged since last thing.find:
+                wake_up
+                after <delay> poll thing.find every 3s until location change (max 8 tries)
+          4) update location & history (only on change)
+          5) notify listeners
         """
 
-        # Locking
+        # --- locking ---------------------------------------------------------
         if not hasattr(self, "_lock_update_position"):
             self._lock_update_position = asyncio.Lock()
 
@@ -642,82 +648,105 @@ class ZcsMowerDataUpdateCoordinator(DataUpdateCoordinator):
             LOGGER.debug("update_position: LOCKED")
             return
 
-        # normalize delay
+        # --- constants (tweak as you like) ----------------------------------
+        INITIAL_DELAY_SEC = 5
+        POLL_INTERVAL_SEC = 3
+        MAX_POLL_TRIES = 8
+        EPS = 1e-6  # float equality tolerance for lat/lng
+
+        # normalize wake_up delay
         try:
-            delay = 3 if delay is None else max(0, int(delay))
+            wake_delay = 5 if delay is None else max(0, int(delay))
         except (TypeError, ValueError):
-            delay = 3
+            wake_delay = 5
+
+        def _extract_coords(resp: dict) -> tuple[float | None, float | None]:
+            rs = (resp.get("alarms") or {}).get("robot_state") or {}
+            lat = rs.get("lat"); lng = rs.get("lng")
+            try:
+                return (float(lat), float(lng)) if lat is not None and lng is not None else (None, None)
+            except (TypeError, ValueError):
+                return (None, None)
+
+        def _same_coords(a: tuple[float | None, float | None], b: tuple[float | None, float | None]) -> bool:
+            (la, lo), (lb, lb2) = a, b
+            if la is None or lo is None or lb is None or lb2 is None:
+                return False
+            return abs(la - lb) <= EPS and abs(lo - lb2) <= EPS
 
         async with self._lock_update_position:
+            # --- step 1: fixed delay ----------------------------------------
+            LOGGER.debug("update_position: STEP 1 ** fixed delay %ds", INITIAL_DELAY_SEC)
+            await asyncio.sleep(INITIAL_DELAY_SEC)
 
-            # STEP 1: trace_position
-            need_wakeup = False
-            try:
-                LOGGER.debug("update_position: STEP 1 ** trace_position")
-                await self.client.execute(
-                    "method.exec",
-                    {
-                        "method": "trace_position",
-                        "imei": imei,
-                        "ackTimeout": API_ACK_TIMEOUT,  # keep your constant
-                        "singleton": True,
-                    },
-                )
-                await self.client.get_response()
-            except ZcsMowerApiCommunicationError as err:
-                # Consider timeout/offline as recoverable via wake_up
-                if "Timed out" in str(err) or "Device not connected" in str(err):
-                    LOGGER.debug("update_position: STEP 1 ** error %s", err)
-                    need_wakeup = True
-                else:
-                    LOGGER.debug("update_position: STEP 1 ** error: %s", err)
-                    need_wakeup = True  # optional: treat all API errors as wake candidates
-            except Exception as err:
-                LOGGER.debug("update_position: STEP 1 ** error: %s", err)
-                need_wakeup = True
-
-            # STEP 1.1 / 1.2: wait-after-wake or normal delay
-            if need_wakeup:
+            # get last known coords
+            mower = self.get_mower_attributes(imei)
+            last_known: tuple[float | None, float | None] = (None, None)
+            if mower is not None:
+                loc = mower.get(ATTR_LOCATION) or {}
                 try:
-                    LOGGER.debug("update_position: STEP 1.1 ** wake_up")
-                    await self.async_wake_up(imei)
-                    await asyncio.sleep(10)
-                except Exception as werr:
-                    LOGGER.debug("update_position: STEP 1.1 ** wake_up error: %s", werr)
-            elif delay:
-                LOGGER.debug("update_position: STEP 1.2 ** delay %ds", delay)
-                await asyncio.sleep(delay)
+                    last_known = (float(loc.get(ATTR_LATITUDE)), float(loc.get(ATTR_LONGITUDE)))
+                except (TypeError, ValueError):
+                    pass
 
-            # STEP 2: thing.find
+            # --- step 2: thing.find -----------------------------------------
+            LOGGER.debug("update_position: STEP 2 ** thing.find (initial)")
             try:
-                LOGGER.debug("update_position: STEP 2 ** thing.find")
                 resp = await self.async_thing_find(imei)
             except Exception as err:
                 LOGGER.debug("update_position: STEP 2 ** error: %s", err)
                 return
 
-            # STEP 3: update location + history (robot_state lat/lng)
-            mower = self.get_mower_attributes(imei)
-            if mower is not None:
-                rs = (resp.get("alarms") or {}).get("robot_state") or {}
-                lat = rs.get("lat"); lng = rs.get("lng")
-                LOGGER.debug("update_position: STEP 3 ** robot_state lat=%s lng=%s", lat, lng)
-                if lat is not None and lng is not None:
-                    try:
-                        latitude = float(lat); longitude = float(lng)
-                    except (TypeError, ValueError):
-                        LOGGER.debug("update_position: STEP 3 ** invalid lat/lng")
-                    else:
-                        mower[ATTR_LOCATION] = {
-                            ATTR_LATITUDE: latitude,
-                            ATTR_LONGITUDE: longitude,
-                        }
-                        self.add_location_history(imei=imei, location=(latitude, longitude))
-                        self.data[imei] = mower
-                        LOGGER.debug("update_position: STEP 3 ** location updated + history appended")
+            current = _extract_coords(resp)
+            LOGGER.debug("update_position: STEP 2 ** cloud coords lat=%s lng=%s", current[0], current[1])
+            coords_changed = not _same_coords(current, last_known)
 
-            # STEP 4: notify listeners
-            LOGGER.debug("update_position: STEP 4 ** notify listeners")
+            # --- step 3: if unchanged -> wake + poll -------------------------
+            if not coords_changed:
+                LOGGER.debug("update_position: STEP 3 ** unchanged -> wake_up")
+                try:
+                    await self.async_wake_up(imei)
+                except Exception as werr:
+                    LOGGER.debug("update_position: STEP 3 ** wake_up error: %s", werr)
+
+                LOGGER.debug("update_position: STEP 3 ** post-wake delay %ds", wake_delay)
+                await asyncio.sleep(wake_delay)
+
+                for tries in range(1, MAX_POLL_TRIES + 1):
+                    try:
+                        LOGGER.debug("update_position: STEP 3 ** poll thing.find try %d/%d", tries, MAX_POLL_TRIES)
+                        resp = await self.async_thing_find(imei)
+                        polled = _extract_coords(resp)
+                        LOGGER.debug("update_position: STEP 3 ** polled lat=%s lng=%s", polled[0], polled[1])
+                        if not _same_coords(polled, last_known):
+                            current = polled
+                            coords_changed = True
+                            LOGGER.debug("update_position: STEP 3 ** location changed after %d tries", tries)
+                            break
+                    except Exception as perr:
+                        LOGGER.debug("update_position: STEP 3 ** poll error: %s", perr)
+
+                    await asyncio.sleep(POLL_INTERVAL_SEC)
+
+                if not coords_changed:
+                    LOGGER.debug("update_position: STEP 3 ** no location change after polling")
+
+            # --- step 4: update location & history ---------------------------
+            if mower is not None and current[0] is not None and current[1] is not None:
+                if coords_changed:
+                    mower[ATTR_LOCATION] = {
+                        ATTR_LATITUDE: current[0],
+                        ATTR_LONGITUDE: current[1],
+                    }
+                    self.add_location_history(imei=imei, location=(current[0], current[1]))
+                    LOGGER.debug("update_position: STEP 4 ** location updated + history appended")
+                else:
+                    LOGGER.debug("update_position: STEP 4 ** coords unchanged, no history append")
+
+                self.data[imei] = mower
+
+            # --- step 5: notify listeners -----------------------------------
+            LOGGER.debug("update_position: STEP 5 ** notify listeners")
             self.hass.async_create_task(self._async_update_listeners())
 
     async def async_prepare_for_command(
